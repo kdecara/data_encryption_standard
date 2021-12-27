@@ -1,5 +1,6 @@
 # data_encryption_standard
-implementation of data encryption standard in c
+to use the program, compile with make and use the following program arguments:
+./des [infile.txt] [outfile.txt] [64 bit key] ['e' for encryption 'd' for decryption]
 
 # Intro to DES
 The data encryption standard is a block cipher encryption algorithm developed by NIST and the NSA. while no longer used due to its small key size (56 bits)
