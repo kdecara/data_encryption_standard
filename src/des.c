@@ -66,7 +66,7 @@ byte *get_half(byte *b, int half, int size, int starting);
  *if we want to call the inverse to unpermute it, we can pass with inv = 1 else inv = 0*/
 byte* IP_caesar(byte *b, int cipher, int inv);
 
-/*
+
 int main(int argc, char *argv[])
 {
     file_s *in_file = open_file(argv[1], "r");
@@ -83,7 +83,7 @@ int main(int argc, char *argv[])
     close_file(out_file);
     return 0;
 }
-*/
+
 
 void encrypt(FILE *in, FILE *out, unsigned long long key)
 {
