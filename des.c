@@ -1,6 +1,5 @@
 /*
  * implementation of data encryption standard (DES) 
- * TODO: implementation is complete except for key scheduling 
  */
 
 #include <stdlib.h>
@@ -9,6 +8,7 @@
 #include "file_pack.h"
 #include "block.h"
 #include "byte_pack.h"
+#include "key.h"
 #define MOD(x, n) ((x % n + n) % n)
 #define GET_BYTE_NUM(bit_index) (bit_index/8)
 #define GET_BIT_NUM(bit_index) MOD(bit_index, 8)
@@ -48,31 +48,17 @@ const static byte inv_ip_box[8][8] = {{39, 7, 47, 15, 55, 23, 63, 31}, {38, 6, 4
                                 {37, 5, 45, 13, 53, 21, 61, 29}, {36, 4, 44, 12, 52, 20, 60, 28},
                                 {35, 3, 43, 11, 51, 19, 59, 27}, {34, 2, 42, 10, 50, 18, 58, 26},
                                 {33, 1, 41, 9, 49, 17, 57, 25}, {32, 0, 40, 8, 48, 16, 56, 24} };
+ 
+void encrypt(FILE *in, FILE *out, unsigned long long key);
+void decrypt(FILE *in, FILE *out, unsigned long long key);
 
-/*initial key permuation*/
-const static byte pc_1[7][8] = {{56, 48, 40, 32, 24, 16, 8, 0}, {57, 49, 41, 33, 25, 17, 9, 1},
-                                {58, 50, 42, 34, 26, 28, 10, 2}, {59, 51, 43, 35, 62, 54, 46, 38},
-                                {30, 22, 14, 6, 61, 53, 45, 37}, {29, 21, 13, 5, 60, 52, 44, 36},
-                                {28, 20, 12, 4, 27, 19, 11, 3}};
-
-const static byte pc_2[6][8] = {{13, 16, 10, 23, 0, 4, 2, 27}, {14, 5, 20, 9, 22, 18, 11, 3},
-                                {25, 7, 15, 6, 26, 19, 12, 1}, {40, 51, 30, 36, 46, 54, 29, 39},
-                                {50, 44, 32, 47, 43, 48, 38, 55},{33, 52, 44, 41, 49, 35, 28, 31}};
-                                
-void encrypt(FILE *in, FILE *out, int IP_cipher);
-void decrypt(FILE *in, FILE *out, int IP_cipher);
-
-void feistel(Block **block, int inv, long IP_cipher);
+void feistel(Block **block, int inv, unsigned long long key);
 byte* ip(byte *_64_bit_block, int inv);
-byte* f(int round_key, byte *half_block);
+byte* f(unsigned long long round_key, byte *half_block);
 byte* e(byte *half_block);
 byte* s(byte *e_block);
 byte* p(byte *s_block);
 
-byte** init_key(byte* _64_bit_block);
-byte* key_schedule(byte *c, byte *d);
-void rotate(byte **_28_bit_block, int shift);
-void rotate_right(byte **_28_bit_block, int shift);
 void swap(byte **left, byte **right);
 byte *get_half(byte *b, int half, int size, int starting);
 
@@ -80,24 +66,26 @@ byte *get_half(byte *b, int half, int size, int starting);
  *if we want to call the inverse to unpermute it, we can pass with inv = 1 else inv = 0*/
 byte* IP_caesar(byte *b, int cipher, int inv);
 
+/*
 int main(int argc, char *argv[])
 {
     file_s *in_file = open_file(argv[1], "r");
     file_s *out_file = open_file(argv[2], "w");
-    int seed = atoi(argv[3]);
+    unsigned long long key = atoll(argv[3]);
+    
     char *mode = argv[4];
    
-    if(mode[0] == 'e') encrypt(in_file->fp, out_file->fp, seed);
+    if(mode[0] == 'e') encrypt(in_file->fp, out_file->fp, key);
     
-    else if(mode[0] == 'd') decrypt(in_file->fp, out_file->fp, seed);
+    else if(mode[0] == 'd') decrypt(in_file->fp, out_file->fp, key);
     
     close_file(in_file);
     close_file(out_file);
     return 0;
 }
+*/
 
-
-void encrypt(FILE *in, FILE *out, int IP_cipher)
+void encrypt(FILE *in, FILE *out, unsigned long long key)
 {
     Block *block = init_block(BLOCK_SIZE);
     byte *permuted_block;
@@ -106,15 +94,15 @@ void encrypt(FILE *in, FILE *out, int IP_cipher)
     {
 	    block->used += num_read;
         permuted_block = ip(block->b, 0);
-        reset_data(block, permuted_block);
-        feistel(&block, 0, IP_cipher);
+        reset_data(block, permuted_block); 
+        feistel(&block, 0, key);
 	    fwrite(block->b, 1, BLOCK_SIZE, out);
 	    clear_block(block);    
     } 
     delete_block(block);
 }
 
-void decrypt(FILE *in, FILE*out, int IP_cipher)
+void decrypt(FILE *in, FILE*out, unsigned long long key)
 {
     Block *block = init_block(BLOCK_SIZE);
     byte *un_permuted_block;
@@ -122,28 +110,38 @@ void decrypt(FILE *in, FILE*out, int IP_cipher)
     while((num_read = fread(block->b, 1, 8, in)) > 0)
     {
 	    block->used += num_read;
-        feistel(&block, 1, IP_cipher);
+        feistel(&block, 1, key);
         un_permuted_block = ip(block->b, 1);
         reset_data(block, un_permuted_block); 
 	    fwrite(block->b, 1, BLOCK_SIZE, out);
-	    clear_block(block);
-        
+	    clear_block(block); 
     } 
     delete_block(block);
 }
 
-void feistel(Block **block, int inv, long cipher)
+/*the feistel network consists of 16 rounds. In each round, the right side is used
+ *as an XOR mask for encrypting the right hand side. inv = 0 indicated encryption. inv = 1
+ * indicates decryption */
+void feistel(Block **block, int inv, unsigned long long key)
 {
-    int i, n, k = (inv) ? 15 : 0, size = BLOCK_SIZE/2;
+    int i, n, shift, size = BLOCK_SIZE/2;
     byte *right = get_half((*block)->b, 1, size, size), *left = get_half((*block)->b, 0, size, 0), *enc_b, *result;
+    unsigned long long _56_bit_key = init_56_bit_key(key);
+    unsigned long long c_0 = init_halves(_56_bit_key, 0), d_0 = init_halves(_56_bit_key, 1), round_key;
     for(i = 0; i < 16; i++)
     {
         /*on rounds 1, 2, 9, 16, rotate both halves left by 1, otherwise rotate left by two*/
-          
-        result = f(k, right);
+        if(i == 0 || i == 1 || i == 8 || i == 15) shift = 1;
+        else shift = 2;
+        /*when in decryption and in round 1, the halves are not rotated*/
+        if(inv && (i == 0)) shift = 0;
+        /*rotate the halves, by the appropriate amount*/
+        rotate(&c_0, shift, !inv);
+        rotate(&d_0, shift, !inv);
+        round_key = get_round_key(join_halves(c_0, d_0));
+        result = f(round_key, right);
         /*the result of f() is used as a mask for XOR encryption of the left side*/ 
         for(n = 0; n < BLOCK_SIZE/2; n++) left[n] ^= result[n];
-        k = (inv) ? k - 1 : k + 1;
         swap(&left, &right);
         free(result);
     }
@@ -182,12 +180,13 @@ byte* ip(byte *_64_bit_block, int inv)
 }
 
 /*f() takes the 32 bit block (either left or right) and round key as input
- *it is bad practice to not free memory in the block it is allocated, but I do so here*/
-byte* f(int round_key, byte *_32_bit_block)
+ * the result of f() is used as an XOR mask for encryption of the other side 
+ * in the feistel function
+ */
+byte* f(unsigned long long round_key, byte *_32_bit_block)
 {
     int n;
     byte *result = e(_32_bit_block); 
-    /*TODO: fix round key[n] later*/
     for(n = 0; n < BLOCK_SIZE; n++) result[n] ^= round_key;
     result = s(result);
     result = p(result);
