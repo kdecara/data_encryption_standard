@@ -33,12 +33,12 @@ The f() function takes a 32 bit input (half of a block, either the left or right
 3. The result is split into 8 blocks of 6 bits each, which are fed into 8 different S-Boxes, which map a 6 bit input to a 4 bit output
 4. the blocks are merged back into 32 bits and are placed into the permutation p() function, in which the block size does not change
 
-#Internal Strucuture of Key Scheduling
+# Internal Strucuture of Key Scheduling
 The orginial 64 bit input key is mapped into 56 bits. This 56 bit key is the actual main key, k, so DES is actually a 56 bit key. The 56 bit key is split into halves
 c (left) and d(right) each consisting of 28 bits. Depending on the round of the feistel network, these halves are rotated by 1 or 2 bits (left for encryption, right for
 decryption). Then, the halves are joined again, and are put through the PC_2 permutation to create the round key k(i).
 
-#Room for Futute Improvement 
+# Room for Futute Improvement 
 Many design decisions were made early on which I believe hurt this implementation. First of all, there was no need to make a Block data type, when an unsigned long long could
 have been used to store the data in either encryption or decryption. Second, the main function des.c is fairly cluttered in the feistel() function, declaring
 a key struct in which much of the key initialization (56 bit mapping, half creation, etc.) is handled in one function call would help with this.
